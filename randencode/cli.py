@@ -147,3 +147,155 @@ def secure_erase_file(filename: str) -> bool:
     except (IOError, OSError) as e:
         print(colorize(f"Failed to erase file: {e}", Colors.RED))
         return False
+
+
+def encrypt_message(engine: RandEncodeEngine, plaintext: str, delay_seconds: int) -> Tuple[str, bool]:
+    """
+    Encrypt a message with the given engine.
+    
+    Args:
+        engine: The encryption engine instance
+        plaintext: The text to encrypt
+        delay_seconds: Time lock duration in seconds
+        
+    Returns:
+        Tuple of (hex ciphertext, save_keys_result)
+    """
+    try:
+        cipher = engine.encrypt(plaintext.encode(), delay_seconds)
+        hex_cipher = cipher.hex()
+        
+        # Save keys to file
+        data = {
+            'keys': engine.key_manager.keys,
+            'unlock_time': time.time() + delay_seconds
+        }
+        save_keys_to_file(data)
+        
+        return hex_cipher, True
+        
+    except EncryptionError as e:
+        print(colorize(f"Encryption error: {e}", Colors.RED))
+        return None, False
+
+
+def decrypt_message(engine: RandEncodeEngine, cipher_hex: str, save_filename: str = "keys.json") -> Tuple[Optional[str], bool]:
+    """
+    Decrypt a message using the loaded keys.
+    
+    Args:
+        engine: The encryption engine instance with loaded keys
+        cipher_hex: Hex string of encrypted data
+        save_filename: Path to file containing saved keys (optional)
+        
+    Returns:
+        Tuple of (decrypted text, success)
+    """
+    try:
+        # Load keys from file if provided
+        if os.path.exists(save_filename):
+            with open(save_filename, 'r') as f:
+                data = json.load(f)
+            engine.key_manager.keys = data.get('keys', [])
+            engine.key_manager.unlock_time = data.get('unlock_time', 0)
+        except (json.JSONDecodeError, IOError):
+            print(colorize("Failed to load keys from file", Colors.RED))
+            return None, False
+    
+    if not engine.can_decrypt():
+        unlock_date = time.strftime("%Y-%m-%d %H:%M:%S", 
+                                     time.localtime(engine.key_manager.unlock_time))
+        remaining = int(engine.key_manager.unlock_time - time.time())
+        print(colorize(
+            f"Decryption locked until {unlock_date} ({remaining} seconds remaining)",
+            Colors.YELLOW
+        ))
+        return None, False
+    
+    try:
+        encrypted_bytes = bytes.fromhex(cipher_hex.replace(' ', ''))
+    except ValueError as e:
+        print(colorize(f"Invalid hex string: {e}", Colors.RED))
+        return None, False
+    
+    try:
+        decrypted_text = engine.decrypt(list(encrypted_bytes))
+        
+        keys_erased = secure_erase_file(save_filename) if save_filename else True
+        return decrypted_text, keys_erased
+        
+    except EncryptionError as e:
+        print(colorize(f"Decryption error: {e}", Colors.RED))
+        return None, False
+
+
+def run_interactive():
+    """Run the interactive CLI menu."""
+    print_banner()
+    
+    engine = RandEncodeEngine()
+    
+    while True:
+        print()
+        print("1 - Encrypt message")
+        print("2 - Decrypt message")
+        print("3 - Exit")
+        print()
+        
+        choice = input("Choose an option: ").strip()
+        
+        if choice == '1':
+            clear_screen()
+            print_banner()
+            
+            plaintext = prompt_user(
+                "Enter text to encrypt", 
+                validate_func=lambda x: len(x) > 0,
+                default=""
+            )
+            
+            delay_seconds = get_non_negative_integer("Enter timelock duration in seconds")
+            
+            print()
+            print(f"Encrypting: {colorize(plaintext[:50], Colors.CYAN)}...")
+            
+            cipher, keys = encrypt_message(engine, plaintext, delay_seconds)
+            
+            if cipher:
+                print()
+                print(colorize("Encryption successful!", Colors.GREEN))
+                print(f"   Encrypted hex (first 100 chars): {cipher[:100]}{'...' if len(cipher) > 100 else ''}")
+                print(f"   Total keys used: {len(engine.key_manager.keys)}")
+                print(f"   Keys saved to: keys.json")
+                print()
+                
+        elif choice == '2':
+            clear_screen()
+            print_banner()
+            
+            # Load existing keys if file exists
+            if os.path.exists("keys.json"):
+                with open("keys.json", 'r') as f:
+                    data = json.load(f)
+                engine.key_manager.keys = data.get('keys', [])
+                engine.key_manager.unlock_time = data.get('unlock_time', 0)
+            
+            cipher_hex = prompt_user(
+                "Enter encrypted hex string",
+                validate_func=lambda x: all(c in '0123456789abcdef' for c in x.lower() if c),
+                default=""
+            )
+            
+            print()
+            decrypted_text, keys_erased = decrypt_message(engine, cipher_hex, "keys.json")
+            
+            if decrypted_text:
+                print(colorize("Decryption successful!", Colors.GREEN))
+                print(f"   Decrypted text: {decrypted_text}")
+                
+        elif choice == '3':
+            print(colorize("Goodbye!", Colors.BLUE))
+            sys.exit(0)
+            
+        else:
+            print(colorize("Invalid choice. Please try again.", Colors.RED))
