@@ -107,7 +107,7 @@ randencode-improved/
 - **Hardware Compatible**: Tested on 16GB+ RAM systems with multi-core CPUs
 - **Batch Processing**: Suitable for encrypting large files (processes in chunks)
 ```
-  **Test**: Encode 100KB text × 1000 iterations
+  Test: Encode 100KB text × 1000 iterations
    ─────────────────────────────────────────
    Original Version:   ~2,467 ms
    Improved Version:   ~1,275 ms
