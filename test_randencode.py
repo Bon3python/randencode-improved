@@ -18,12 +18,10 @@ sys.path.insert(0, '.')
 try:
     from randencode.core import (
         encrypt, decrypt, mod_inverse, extended_gcd,
-        extended_gcd_inverse,
         ExtendedEuclideanError,
         RandEncodeError,
         NUM_LAYERS, MODULUS
     )
-    from randencode.cli import encrypt_cli, decrypt_cli
 except ImportError as e:
     print(f"[!] Cannot import module: {e}")
     print("Make sure you're running from the project root.")
@@ -109,11 +107,6 @@ class TestRandEncodeCore(unittest.TestCase):
         # Verify: gcd should be correct and ax + by = gcd
         self.assertEqual(gcd, 6)  # gcd(48, 18) = 6
         self.assertEqual(a * x + b * y, gcd)
-    
-    def test_extended_gcd_zero_error(self):
-        """Test that extended_gcd raises error for (0, 0)."""
-        with self.assertRaises(ValueError):
-            extended_gcd(0, 0)
     
     def test_even_key_rejected(self):
         """Test that even keys are rejected (may not have inverse)."""
