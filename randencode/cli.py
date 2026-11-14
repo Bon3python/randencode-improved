@@ -38,15 +38,9 @@ def clear_screen():
 
 def print_banner():
     """Print the RandEncode banner."""
-    banner = """\n{}"
-██████╗  █████╗ ███╗   ██╗██████╗ ███████╗███╗   ██╗ ██████╗ ██████╗ ██████╗ ███████╗
-██╔══██╗██╔══██╗████╗  ██║██╔══██╗██╔════╝████╗  ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝
-██████╔╝███████║██╔██╗ ██║██║  ██║█████╗  ██╔██╗ ██║██║     ██║   ██║██║  ██║█████╗
-██╔══██╗██╔══██║██║╚██╗██║██║  ██║██╔══╝  ██║╚██╗██║██║     ██║   ██║██║  ██║██╔══╝
-██║  ██║██║  ██║██║ ╚████║██████╔╝███████╗██║ ╚████║╚██████╗╚██████╔╝██████╔╝███████╗
-╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
-""".format(Colors.BLUE + Colors.BOLD)
+    banner = "\n{}".format(Colors.BLUE + Colors.BOLD)
     print(banner)
+    print()
 
 
 def prompt_user(prompt: str, default: Optional[str] = None, validate_func=None) -> str:
@@ -112,88 +106,79 @@ def secure_erase_file(filename: str) -> bool:
     Securely erase a file by overwriting with random data multiple times before deletion.
     
     This implementation follows security best practices for sensitive file erasure:
-    1. Writes random bytes multiple times (3 passes)
-    2. Final overwrite with zeros
-    3. Atomic delete operation
+    1. Writes random data to the file multiple times
+    2. Performs one final write of zeros
+    3. Attempts to delete the file
     
-    Args:
-        filename: Path to the file to securely erase
-        
-    Returns:
-        True if successful, False otherwise
+    Returns True if successful, False otherwise.
     """
+    if not os.path.exists(filename):
+        return True
+    
     try:
-        if not os.path.exists(filename):
-            return False
-            
-        file_size = os.path.getsize(filename)
+        # Overwrite with random data 3 times
+        for _ in range(3):
+            with open(filename, 'wb') as f:
+                f.write(secrets.token_bytes(os.path.getsize(filename)))
         
-        # Handle edge case: empty files
-        if file_size == 0:
-            os.remove(filename)
-            return True
-            
+        # Final overwrite with zeros
         with open(filename, 'wb') as f:
-            for _ in range(3):
-                # Overwrite with random data
-                f.write(secrets.token_bytes(file_size))
-            # Final pass with zeros
-            f.write(b'\x00' * file_size)
+            f.write(b'\x00' * os.path.getsize(filename))
         
-        # Delete the file securely
+        # Delete the file
         os.remove(filename)
         return True
-        
     except (IOError, OSError) as e:
-        print(colorize(f"Failed to erase file: {e}", Colors.RED))
+        print(colorize(f"Failed to securely erase file: {e}", Colors.RED))
         return False
 
 
-def encrypt_message(engine: RandEncodeEngine, plaintext: str, delay_seconds: int) -> Tuple[str, bool]:
+def encrypt_message(engine: RandEncodeEngine, plaintext: str, delay_seconds: int) -> Tuple[Optional[str], bool]:
     """
-    Encrypt a message with the given engine.
+    Encrypt a message and save keys to file.
     
     Args:
-        engine: The encryption engine instance
-        plaintext: The text to encrypt
-        delay_seconds: Time lock duration in seconds
+        engine: The RandEncodeEngine instance
+        plaintext: Text to encrypt
+        delay_seconds: Time in seconds before decryption is allowed
         
     Returns:
-        Tuple of (hex ciphertext, save_keys_result)
+        Tuple of (hex cipher string, success flag)
     """
     try:
-        cipher = engine.encrypt(plaintext.encode(), delay_seconds)
-        hex_cipher = cipher.hex()
+        result = engine.encrypt(plaintext, delay_seconds)
         
-        # Save keys to file
-        data = {
-            'keys': engine.key_manager.keys,
-            'unlock_time': time.time() + delay_seconds
-        }
-        save_keys_to_file(data)
+        # Save keys to file for later decryption
+        if save_keys_to_file({
+            'keys': result['keys'],
+            'unlock_time': result['unlock_time']
+        }):
+            print(colorize("Keys saved successfully!", Colors.GREEN))
         
-        return hex_cipher, True
+        # Return hex string of cipher bytes for CLI display
+        cipher_bytes = bytes.fromhex(result['cipher'])
+        return result['cipher'].replace(' ', ''), True
         
     except EncryptionError as e:
         print(colorize(f"Encryption error: {e}", Colors.RED))
         return None, False
 
 
-def decrypt_message(engine: RandEncodeEngine, cipher_hex: str, save_filename: str = "keys.json") -> Tuple[Optional[str], bool]:
+def decrypt_message(engine: RandEncodeEngine, cipher_hex: str, save_filename: Optional[str] = None) -> Tuple[Optional[str], bool]:
     """
-    Decrypt a message using the loaded keys.
+    Decrypt a message using saved keys.
     
     Args:
-        engine: The encryption engine instance with loaded keys
+        engine: The RandEncodeEngine instance
         cipher_hex: Hex string of encrypted data
-        save_filename: Path to file containing saved keys (optional)
+        save_filename: Optional filename to save keys from (for loading)
         
     Returns:
-        Tuple of (decrypted text, success)
+        Tuple of (decrypted text, success flag)
     """
-    try:
-        # Load keys from file if provided
-        if os.path.exists(save_filename):
+    # Load keys if saving to file
+    if save_filename and os.path.exists(save_filename):
+        try:
             with open(save_filename, 'r') as f:
                 data = json.load(f)
             engine.key_manager.keys = data.get('keys', [])
@@ -221,6 +206,7 @@ def decrypt_message(engine: RandEncodeEngine, cipher_hex: str, save_filename: st
     try:
         decrypted_text = engine.decrypt(list(encrypted_bytes))
         
+        # Erase keys if we're saving to file
         keys_erased = secure_erase_file(save_filename) if save_filename else True
         return decrypted_text, keys_erased
         
