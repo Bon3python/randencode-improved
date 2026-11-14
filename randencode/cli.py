@@ -38,7 +38,7 @@ def clear_screen():
 
 def print_banner():
     """Print the RandEncode banner."""
-    banner = "\n{}".format(Colors.BLUE + Colors.BOLD)
+    banner = "{}".format(Colors.BLUE + Colors.BOLD)
     print(banner)
     print()
 
@@ -125,68 +125,59 @@ def secure_erase_file(filename: str) -> bool:
         with open(filename, 'wb') as f:
             f.write(b'\x00' * os.path.getsize(filename))
         
-        # Delete the file
+        # Attempt to delete the file
         os.remove(filename)
         return True
-    except (IOError, OSError) as e:
-        print(colorize(f"Failed to securely erase file: {e}", Colors.RED))
+    except (IOError, OSError):
+        # Even if deletion fails, the data has been overwritten
         return False
 
 
-def encrypt_message(engine: RandEncodeEngine, plaintext: str, delay_seconds: int) -> Tuple[Optional[str], bool]:
-    """
-    Encrypt a message and save keys to file.
+def encrypt_message(engine: RandEncodeEngine, plaintext: str, delay_seconds: int) -> Optional[dict]:
+    """Encrypt a message using the engine.
     
     Args:
-        engine: The RandEncodeEngine instance
-        plaintext: Text to encrypt
+        engine: The encryption engine instance
+        plaintext: The text to encrypt
         delay_seconds: Time in seconds before decryption is allowed
         
     Returns:
-        Tuple of (hex cipher string, success flag)
+        Dictionary with cipher hex string and keys list, or None if encryption fails
     """
     try:
-        result = engine.encrypt(plaintext, delay_seconds)
+        encrypted = engine.encrypt(plaintext, delay_seconds=delay_seconds)
         
-        # Save keys to file for later decryption
-        if save_keys_to_file({
-            'keys': result['keys'],
-            'unlock_time': result['unlock_time']
-        }):
-            print(colorize("Keys saved successfully!", Colors.GREEN))
+        # Save the keys to a file for later decryption
+        save_keys_to_file({'keys': engine.key_manager.keys, 'unlock_time': time.time() + delay_seconds})
         
-        # Return hex string of cipher bytes for CLI display
-        cipher_bytes = bytes.fromhex(result['cipher'])
-        return result['cipher'].replace(' ', ''), True
-        
-    except EncryptionError as e:
-        print(colorize(f"Encryption error: {e}", Colors.RED))
-        return None, False
+        return {
+            'cipher': ' '.join(f'{b:02x}' for b in encrypted['bytes']),
+            'keys': engine.key_manager.keys
+        }
+    except Exception as e:
+        print(colorize(f"Encryption failed: {e}", Colors.RED))
+        return None
 
 
-def decrypt_message(engine: RandEncodeEngine, cipher_hex: str, save_filename: Optional[str] = None) -> Tuple[Optional[str], bool]:
-    """
-    Decrypt a message using saved keys.
+def decrypt_message(engine: RandEncodeEngine, cipher_hex: str, save_filename: Optional[str]) -> Tuple[Optional[str], bool]:
+    """Decrypt a message using the engine.
     
     Args:
-        engine: The RandEncodeEngine instance
-        cipher_hex: Hex string of encrypted data
-        save_filename: Optional filename to save keys from (for loading)
+        engine: The decryption engine instance
+        cipher_hex: Hex string representation of encrypted bytes (space-separated)
+        save_filename: Filename to save decrypted output (optional)
         
     Returns:
-        Tuple of (decrypted text, success flag)
+        Tuple of (decrypted_text, keys_erased) where keys_erased indicates if keys were securely erased
     """
-    # Load keys if saving to file
-    if save_filename and os.path.exists(save_filename):
-        try:
-            with open(save_filename, 'r') as f:
-                data = json.load(f)
-            engine.key_manager.keys = data.get('keys', [])
-            engine.key_manager.unlock_time = data.get('unlock_time', 0)
-        except (json.JSONDecodeError, IOError):
-            print(colorize("Failed to load keys from file", Colors.RED))
-            return None, False
+    # Load existing keys from file if available
+    if os.path.exists("keys.json"):
+        with open("keys.json", 'r') as f:
+            data = json.load(f)
+        engine.key_manager.keys = data.get('keys', [])
+        engine.key_manager.unlock_time = data.get('unlock_time', 0)
     
+    # Check if decryption is locked
     if not engine.can_decrypt():
         unlock_date = time.strftime("%Y-%m-%d %H:%M:%S", 
                                      time.localtime(engine.key_manager.unlock_time))
@@ -204,7 +195,7 @@ def decrypt_message(engine: RandEncodeEngine, cipher_hex: str, save_filename: Op
         return None, False
     
     try:
-        decrypted_text = engine.decrypt(list(encrypted_bytes))
+        decrypted_text = engine.decrypt(' '.join(f'{b:02x}' for b in encrypted_bytes), engine.key_manager.keys)
         
         # Erase keys if we're saving to file
         keys_erased = secure_erase_file(save_filename) if save_filename else True
