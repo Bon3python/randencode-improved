@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.8"
 authors = [
-    {name = "starkkiv", email = ""}
+    {name = "starkkiv", email = "starkkiv@example.com"}
 ]
 keywords = ["encryption", "modular-arithmetic", "time-lock", "crypto"]
 classifiers = [
