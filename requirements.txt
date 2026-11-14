@@ -1,0 +1,19 @@
+# RandEncode Dependencies
+#
+# This project uses ONLY Python standard library - no external dependencies!
+#
+# Requirements:
+# - Python 3.8 or higher
+#
+# Standard library modules used:
+# - secrets      # Cryptographically secure random number generation
+# - time         # Timestamp handling for time-lock feature
+# - json         # JSON serialization for cipher files
+# - sys          # System utilities and error handling
+# - os           # File system operations
+# - typing       # Type hints for better code clarity
+#
+# To install (if needed):
+# python --version  # Check Python 3.8+
+#
+# No pip install required!
