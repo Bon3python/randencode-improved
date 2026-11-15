@@ -176,11 +176,14 @@ class RandEncodeEngine:
         original_length = len(data)
         
         # Apply multiple layers of transformation
-        keys_used = []
+        generated_keys = []
         for _ in range(num_layers):
             key = self.get_random_key()
-            keys_used.append(key)
+            generated_keys.append(key)
             data = self._apply_layer(data, key, is_encryption=True)
+        
+        # Store keys in key_manager for decryption using stored keys format
+        self.key_manager.keys = generated_keys
         
         # Prepare cipher output as space-separated hex string
         cipher_hex = ' '.join(f'{byte:02x}' for byte in data)
@@ -190,7 +193,7 @@ class RandEncodeEngine:
         
         return {
             'cipher': cipher_hex,
-            'keys': keys_used,
+            'keys': generated_keys,
             'unlock_time': self.key_manager.unlock_time,
             'num_layers': num_layers,
             'original_length': original_length,
