@@ -1,0 +1,8 @@
+# RandEncode - No external dependencies required!
+# Python 3.7+ standard library only
+
+# All functionality uses:
+# - secrets (cryptographically secure random numbers)
+# - json (key storage)
+# - os, sys, time (system utilities)
+# - typing (type hints)

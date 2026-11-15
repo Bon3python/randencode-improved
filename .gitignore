@@ -1,0 +1,37 @@
+# Bytecode and compiled Python files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+
+# IDE configuration
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Runtime data
+*.log
+*.tmp
+*.bak
+
+# Key file (sensitive)
+keys.json
+
+# Test results
+coverage.xml
+htmlcov/
+
+# Distribution
+dist/
+build/
+*.egg-info/
